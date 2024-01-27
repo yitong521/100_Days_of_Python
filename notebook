@@ -1,0 +1,240 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Dec 20 13:01:37 2023
+
+@author: yttan
+"""
+
+#%%
+
+import pandas as pd
+import math
+import os
+import FACTS_fun_Global as factsg
+os.chdir(factsg.dir_github)
+
+import Search_File_Github
+import FACTS_lib_Global_Variables as factsgv
+
+#%%
+# open the datafiles and get the basic data
+def open_data_files():
+    """
+    read data from file and return data that we need 
+    """
+    path_save_from_FMdatabase = os.path.join(
+        factsgv.DATA_MEN_PATH, "02 Database/FM_database/")
+    
+    player_df_path = "{}England_database.xlsx".format(
+        path_save_from_FMdatabase).replace("\\", "/")
+    player_df = pd.read_excel(player_df_path)
+    
+    weighted_file_path = "{}weighted calculation.xlsx".format(
+        path_save_from_FMdatabase).replace("\\", "/")
+    weighted_file_df = pd.read_excel(weighted_file_path)
+    
+    column_name_file_path = "{}column_full_name.xlsx".format(
+        path_save_from_FMdatabase).replace("\\", "/")
+    column_name_file_df = pd.read_excel(column_name_file_path)
+    
+    garbled_code_adjustment_file_path = "{}Garbled code adjustment.xlsx".format(
+        path_save_from_FMdatabase).replace("\\", "/")
+    garbled_code_adjustment_file_df = pd.read_excel(garbled_code_adjustment_file_path)
+    
+    position_df = pd.read_excel(weighted_file_path, sheet_name=1, index_col= None)
+    
+    # unify names from different database 
+    for i, row in position_df.iterrows():
+        new_column_name = row['Individual Position, Role And Duty Training Focus For The Player']
+        mapped_column_name = row['Positions']
+    
+        weighted_file_df[new_column_name] = weighted_file_df[mapped_column_name]
+    return  player_df, weighted_file_df, column_name_file_df, garbled_code_adjustment_file_df
+
+
+def remove_rows_by_index(player_df, index_values_to_remove):
+    """
+    Remove rows from player_df based on specified index values.
+
+    Parameters:
+    - player_df: DataFrame to modify.
+    - index_values_to_remove: List of index values to remove.
+
+    Returns:
+    - Modified DataFrame.
+    """
+    player_df = player_df.copy()
+
+    # Convert 'NaN' to 'nan' in the index
+    player_df.index = player_df.index.where(player_df.index != pd.NA, other='nan')
+
+    # Remove rows with 'nan' index values or specific index values
+    player_df = player_df[~player_df.index.isin(index_values_to_remove)]
+
+    return player_df
+
+def fun_add_ability_to_player_df(player_df, weighted_file_df):
+    """
+    add matches calculated data in the dataframe
+
+    Parameters:
+    - player_df: DataFrame to add the calculation ability and it is the detail of player's dataframe.
+    - weighted_file_df: List of index values to remove.
+
+    Returns:
+    - Modified DataFrame.
+    """
+    player_df = player_df.copy()
+    
+    # Explicitly use .loc to set the values
+    player_df.loc[:, 'Weighted_Score'] = 0
+    player_df.loc[:, 'Final_Weighted_Score'] = float('nan') 
+    
+    for index, player in player_df.iterrows():
+        position = player['Individual Position, Role And Duty Training Focus For The Player']
+
+        # check whether the position is nan, if so, continue to the next loop
+        if pd.notna(position):
+            weights = weighted_file_df[position]
+
+            # Find the corresponding value in 'Calculation' row
+            calculation_value = weights.get('Calculation', default=float('nan'))  
+
+            weights = weights.to_frame()
+            for index_weight, value_weight in weights[1:].iterrows():
+                try:
+                    value = player_df.loc[index, index_weight]
+                    if not math.isnan(value) and not math.isnan(value_weight.tolist()[0]):
+                        player_df.at[index, 'Weighted_Score'] += value * value_weight.tolist()[0]
+
+                except:
+                    # Use .loc to set the value on the specific row
+                    player_df.loc[index, 'Weighted_Score'] = 0
+
+            # Calculate 'Final_Weighted_Score' for the current row
+            try:
+                if not math.isnan(calculation_value):
+                    # Use .loc to set the value on the specific row
+                    player_df.loc[index, 'Final_Weighted_Score_current_ability'] = player_df.at[index, 'Weighted_Score'] / float(calculation_value)
+                else:
+                    # Use .loc to set the value on the specific row
+                    player_df.loc[index, 'Final_Weighted_Score_current_ability'] = float('nan')  # if calculation_value is NaN，set 'Final_Weighted_Score_current_ability' to NaN
+            except ZeroDivisionError:
+                print(f"Error: Division by zero for {index}. Setting 'Final_Weighted_Score_current_ability' to NaN.")
+                # Use .loc to set the value on the specific row
+                player_df.loc[index, 'Final_Weighted_Score_current_ability'] = float('nan')  # set 'Final_Weighted_Score_current_ability' to NaN if divide by zero
+    
+    return player_df
+
+def merge_xlsx_files(folder_path):
+    """
+    Merge data from all xlsx files in the specified folder.
+
+    Parameters:
+    - folder_path: Path to the folder containing xlsx files.
+
+    Returns:
+    - Merged DataFrame.
+    """
+    file_names = [file for file in os.listdir(folder_path) if file.endswith(".xlsx")]
+
+    merged_data = pd.DataFrame()
+
+    for file_name in file_names:
+        file_path = os.path.join(folder_path, file_name)
+        df = pd.read_excel(file_path, sheet_name=0)
+
+        merged_data = pd.concat([merged_data, df], ignore_index=True)
+
+    return merged_data
+
+def replace_values(cell_value):
+    # this function is used for replace garbled code to readable letters 
+    if isinstance(cell_value, str):
+        for former, value in garbled_code_adjustment_dict.items():
+            cell_value = cell_value.replace(former, value)
+    return cell_value
+
+#%% change the number
+turn = '01'
+
+#%% get the data and tidy up the data
+path_save_from_FMdatabase = os.path.join(
+    factsgv.DATA_MEN_PATH, f"02 Database/FM_database/{turn}")
+
+#folder_path = os.path.join(factsgv.DATA_MEN_PATH, "02 Database/FM_database/FM 2024")
+merged_dataframe = merge_xlsx_files(path_save_from_FMdatabase)
+
+pickle_file_path = f'C:/Users/yttan/Desktop/before_add_ability_file_{turn}.pkl'
+# Write the DataFrame to a pickle file
+merged_dataframe.to_pickle(pickle_file_path)
+
+#%% calculate ability
+
+#get data from Gdrive
+# player_df is the database of player information , weighted_file_df is the calculation rules
+player_df, weighted_file_df, column_name_file_df, garbled_code_adjustment_file_df= open_data_files()
+
+ 
+player_df = merged_dataframe
+merged_dataframe.columns = column_name_file_df.columns
+
+weighted_file_df.set_index(weighted_file_df.columns[0], inplace=True)
+player_df.set_index(player_df.columns[0], inplace=True)
+
+#%% final part
+# delete the line with index of NA and someother common data
+indices_to_remove = ['nan', "https://www.sigames.com/"]
+player_df = remove_rows_by_index(player_df, indices_to_remove)
+#calculate the ability
+player_df_update = fun_add_ability_to_player_df(player_df, weighted_file_df)
+
+pickle_file_path = f'C:/Users/yttan/Desktop/file_{turn}.pkl'
+
+# Write the DataFrame to a pickle file
+player_df_update.to_pickle(pickle_file_path)
+
+#%%
+garbled_code_adjustment_dict = dict(zip(garbled_code_adjustment_file_df['former'], garbled_code_adjustment_file_df['adjustment']))
+
+
+#%% define turn
+turn2 = "01"
+#%% calculate
+path_save_from_FMdatabase = os.path.join(
+    factsgv.DATA_MEN_PATH, f"02 Database/FM_database/FM 2024-pickle/file_{turn2}.pkl")
+
+dataframe = pd.read_pickle(path_save_from_FMdatabase)
+
+dataframe= dataframe.applymap(replace_values)
+
+
+#%%
+dataframe= player_df_update.applymap(replace_values)
+
+#%% get together
+
+merged_final_df = pd.concat([merged_final_df, dataframe], axis=0, ignore_index=False)
+merged_final_df = merged_final_df.drop_duplicates()
+
+
+#%%
+
+path_save_from_FMdatabase = os.path.join(
+    factsgv.DATA_MEN_PATH, f"02 Database/FM_database/FM 2024_pickle_final.pkl")
+
+merged_final_df.to_pickle(path_save_from_FMdatabase)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
