@@ -10,11 +10,10 @@ Created on Wed Dec 20 13:01:37 2023
 import pandas as pd
 import math
 import os
-import FACTS_fun_Global as factsg
-os.chdir(factsg.dir_github)
+
 
 import Search_File_Github
-import FACTS_lib_Global_Variables as factsgv
+
 
 #%%
 # open the datafiles and get the basic data
@@ -23,7 +22,7 @@ def open_data_files():
     read data from file and return data that we need 
     """
     path_save_from_FMdatabase = os.path.join(
-        factsgv.DATA_MEN_PATH, "02 Database/FM_database/")
+        DATA_MEN_PATH, "02 Database/FM_database/")
     
     player_df_path = "{}England_database.xlsx".format(
         path_save_from_FMdatabase).replace("\\", "/")
